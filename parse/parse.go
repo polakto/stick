@@ -66,6 +66,28 @@ func (t *Tree) Macros() map[string]*MacroNode {
 	return t.macros
 }
 
+// GetTokens returns variable tokens in string form. Ex.: user.attribute.subattribute made by polakto
+func (t *Tree) GetTokens() ([]struct {
+	TokenType int
+	Value     string
+}, error) {
+	var tokens []struct {
+		TokenType int
+		Value     string
+	}
+	for _, token := range t.read {
+		newToken := struct {
+			TokenType int
+			Value     string
+		}{
+			int(token.tokenType),
+			token.value,
+		}
+		tokens = append(tokens, newToken)
+	}
+	return tokens, nil
+}
+
 func (t *Tree) popBlockStack() map[string]*BlockNode {
 	blocks := t.Blocks()
 	t.blocks = t.blocks[0 : len(t.blocks)-1]
