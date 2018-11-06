@@ -5,9 +5,12 @@ import (
 
 	"os"
 
-	"github.com/tyler-sommer/stick"
-	"github.com/tyler-sommer/stick/parse"
-	"github.com/tyler-sommer/stick/twig"
+	// "github.com/tyler-sommer/stick"
+	// "github.com/tyler-sommer/stick/parse"
+	// "github.com/tyler-sommer/stick/twig"
+	"github.com/polakto/stick"
+	"github.com/polakto/stick/parse"
+	"github.com/polakto/stick/twig"
 )
 
 // This example shows how the AutoEscapeVisitor can be used to automatically

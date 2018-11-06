@@ -2,14 +2,81 @@
 package filter
 
 import (
+	"fmt"
 	"math"
+	"net/url"
 	"strings"
 	"unicode/utf8"
 
-	"github.com/tyler-sommer/stick"
 	"reflect"
 	"time"
+
+	"github.com/polakto/stick"
 )
+
+const (
+	FilterDateDefaultLayout     = "yyyy-MM-dd"
+	FilterDateTimeDefaultLayout = "yyyy-MM-dd hh:mm:ss"
+	FilterTimeDefaultLayout     = "hh:mm:ss"
+)
+
+// by polakto
+var DatePatternTokensMap = map[string]string{
+	// year
+	"yyyy": "2006",
+	"yyy":  "006",
+	"yy":   "06",
+
+	// month
+	"MM": "01", // 01-12
+	"M":  "1",  // 1-12
+
+	// day
+	"dd": "02", // 01-07
+	"d":  "2",  // 1-7
+
+	// hours
+	"hh": "03", // 01-12
+	"h":  "3",  // 1-12
+	"HH": "15", // 0 - 24
+	"H":  "15", // 0 - 24 - not possible, will be 00 - 24
+
+	// minutes
+	"mm": "04", // 00 - 59
+	"m":  "4",  // 0 - 59
+
+	// seconds
+	"ss": "05", // 00-59
+	"s":  "5",  // 0-59
+}
+
+var DatePatternTokensSlice = []string{
+	"yyyy",
+	"yyy",
+	"yy",
+	"MM",
+	"M",
+	"dd",
+	"d",
+	"hh",
+	"h",
+	"HH",
+	"H",
+	"mm",
+	"m",
+	"ss",
+	"s",
+}
+
+// by polakto
+func StandardDatePatternToGoDatePattern(stdPattern string) string {
+	goPattern := stdPattern
+	for key := range DatePatternTokensSlice {
+		goPattern = strings.Replace(goPattern, DatePatternTokensSlice[key], DatePatternTokensMap[DatePatternTokensSlice[key]], -1)
+
+	}
+	return goPattern
+}
 
 // builtInFilters returns a map containing all built-in Twig filters,
 // with the exception of "escape", which is provided by the AutoEscapeExtension.
@@ -45,6 +112,11 @@ func TwigFilters() map[string]stick.Filter {
 		"trim":             filterTrim,
 		"upper":            filterUpper,
 		"url_encode":       filterURLEncode,
+
+		// custom
+		"get":      filterGet,
+		"dateTime": filterDateTime,
+		"time":     filterTime,
 	}
 }
 
@@ -125,10 +197,11 @@ func filterConvertEncoding(ctx stick.Context, val stick.Value, args ...stick.Val
 }
 
 func filterDate(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
-	var requestedLayout string
-	dt, ok := val.(time.Time)
-	if !ok {
-		// TODO: trigger runtime error
+	requestedLayout := FilterDateDefaultLayout
+
+	strD := stick.CoerceString(val)
+	d, conversionErr := convertMariaDBDate(strD)
+	if conversionErr != nil {
 		return nil
 	}
 
@@ -136,62 +209,64 @@ func filterDate(ctx stick.Context, val stick.Value, args ...stick.Value) stick.V
 		requestedLayout = stick.CoerceString(args[0])
 	}
 
-	// build a golang date string
-	table := map[string]string{
-		"d" : "02",
-		"D" : "Mon",
-		"j" : "2",
-		"l" : "Monday",
-		"N" : "", // TODO: ISO-8601 numeric representation of the day of the week (added in PHP 5.1.0)
-		"S" : "", // TODO: English ordinal suffix for the day of the month, 2 characters
-		"w" : "", // TODO: Numeric representation of the day of the week
-		"z" : "", // TODO: The day of the year (starting from 0)
-		"W" : "", // TODO: ISO-8601 week number of year, weeks starting on Monday (added in PHP 4.1.0)
-		"F" : "January",
-		"m" : "01",
-		"M" : "Jan",
-		"n" : "1",
-		"t" : "", // TODO: Number of days in the given month
-		"L" : "", // TODO: Whether it's a leap year
-		"o" : "", // TODO: ISO-8601 year number. This has the same value as Y, except that if the ISO week number (W) belongs to the previous or next year, that year is used instead. (added in PHP 5.1.0)
-		"Y" : "2006",
-		"y" : "06",
-		"a" : "pm",
-		"A" : "PM",
-		"B" : "", // TODO: Swatch Internet time (is this even still a thing?!)
-		"g" : "3",
-		"G" : "15",
-		"h" : "03",
-		"H" : "15",
-		"i" : "04",
-		"s" : "05",
-		"u" : "000000",
-		"e" : "", // TODO: Timezone identifier (added in PHP 5.1.0)
-		"I" : "", // TODO: Whether or not the date is in daylight saving time
-		"O" : "-0700",
-		"P" : "-07:00",
-		"T" : "MST",
-		"c" : "2006-01-02T15:04:05-07:00",
-		"r" : "Mon, 02 Jan 2006 15:04:05 -0700",
-		"U" : "", // TODO: Seconds since the Unix Epoch (January 1 1970 00:00:00 GMT)
-	}
-	var layout string
+	return fmt.Sprintf("\n %s", d.Format(StandardDatePatternToGoDatePattern(requestedLayout)))
+}
 
-	maxLen := len(requestedLayout);
-	for i := 0; i < maxLen; i++ {
-		char := string(requestedLayout[i])
-		if t, ok := table[char]; ok {
-			layout += t
-			continue
-		}
-		if "\\" == char && i < maxLen-1{
-			layout += string(requestedLayout[i+1])
-			continue
-		}
-		layout += char
+func filterDateTime(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
+	requestedLayout := FilterDateTimeDefaultLayout
+
+	strD := stick.CoerceString(val)
+	d, conversionErr := convertMariaDBDateTime(strD)
+	if conversionErr != nil {
+		return nil
 	}
 
-	return dt.Format(layout)
+	if l := len(args); l >= 1 {
+		requestedLayout = stick.CoerceString(args[0])
+	}
+
+	return fmt.Sprintf("\n %s", d.Format(StandardDatePatternToGoDatePattern(requestedLayout)))
+}
+
+func filterTime(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
+	requestedLayout := FilterTimeDefaultLayout
+
+	strD := stick.CoerceString(val)
+	d, conversionErr := convertMariaDBTime(strD)
+	if conversionErr != nil {
+		return nil
+	}
+
+	if l := len(args); l >= 1 {
+		requestedLayout = stick.CoerceString(args[0])
+	}
+
+	return fmt.Sprintf("\n %s", d.Format(StandardDatePatternToGoDatePattern(requestedLayout)))
+}
+
+// filter date, time, datetime helpers
+func convertMariaDBDate(in string) (time.Time, error) {
+	t, err := time.Parse("2006-01-02", in)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t, nil
+}
+
+func convertMariaDBTime(in string) (time.Time, error) {
+	t, err := time.Parse("15:04:05", in)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t, nil
+}
+
+func convertMariaDBDateTime(in string) (time.Time, error) {
+	t, err := time.Parse("2006-01-02 15:04:05", in)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return t, nil
 }
 
 func filterDateModify(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
@@ -236,7 +311,7 @@ func filterFormat(ctx stick.Context, val stick.Value, args ...stick.Value) stick
 }
 
 func filterJoin(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
-	if ! stick.IsIterable(val) {
+	if !stick.IsIterable(val) {
 		return nil
 	}
 
@@ -285,7 +360,7 @@ func filterLower(ctx stick.Context, val stick.Value, args ...stick.Value) stick.
 }
 
 func filterMerge(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
-	if ! stick.IsIterable(val) {
+	if !stick.IsIterable(val) {
 		return nil
 	}
 
@@ -374,6 +449,47 @@ func filterUpper(ctx stick.Context, val stick.Value, args ...stick.Value) stick.
 }
 
 func filterURLEncode(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
-	// TODO: Implement Me
-	return val
+	// by polakto
+	return url.PathEscape(stick.CoerceString(val))
+}
+
+func filterGet(ctx stick.Context, val stick.Value, args ...stick.Value) stick.Value {
+	// by polakto
+	var intKey int
+	var strKey string
+
+	if len(args) != 1 {
+		return nil
+	}
+	switch args[0].(type) {
+	case string:
+		strKey = args[0].(string)
+	case float64:
+		intKey = int(args[0].(float64))
+	default:
+		return nil
+	}
+
+	switch val.(type) {
+	case []stick.Value:
+		if intKey == 0 {
+			return nil
+		}
+		if intKey > len(val.([]stick.Value)) {
+			return nil
+		}
+		return val.([]stick.Value)[intKey-1]
+	case map[string]stick.Value:
+		if strKey == "" {
+			return nil
+		}
+		mapData := val.(map[string]stick.Value)
+		item, ok := mapData[strKey]
+		if !ok {
+			return nil
+		}
+		return item
+	default:
+		return nil
+	}
 }

@@ -26,9 +26,12 @@
 package twig
 
 import (
-	"github.com/tyler-sommer/stick"
-	"github.com/tyler-sommer/stick/parse"
-	"github.com/tyler-sommer/stick/twig/filter"
+	// "github.com/tyler-sommer/stick"
+	// "github.com/tyler-sommer/stick/parse"
+	// "github.com/tyler-sommer/stick/twig/filter"
+	"github.com/polakto/stick"
+	"github.com/polakto/stick/parse"
+	"github.com/polakto/stick/twig/filter"
 )
 
 // New creates a new, default Env that aims to be compatible with Twig.
